@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>藤蔓生长 · Vine Growth</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 35%, #16213e 0%, #0a0e1a 60%, #05060d 100%);
+    cursor: crosshair;
+  }
+  #scene {
+    display: block;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  #hint {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 255, 255, 0.55);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 16px;
+    letter-spacing: 2px;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity 1.2s ease;
+    text-align: center;
+  }
+  #hint small {
+    display: block;
+    margin-top: 8px;
+    font-size: 12px;
+    opacity: 0.6;
+  }
+  #hint.hidden { opacity: 0; }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="hint">点击屏幕任意位置，让藤蔓发芽生长<small>双击空白处可清空画面</small></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.getElementById("scene");
+  const ctx = canvas.getContext("2d");
+  const hint = document.getElementById("hint");
+
+  let W = 0, H = 0, dpr = 1;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---- 藤蔓分支模型 ----
+  const branches = [];
+  const MAX_BRANCHES = 2600;
+  const TWO_PI = Math.PI * 2;
+
+  function spawnSprout(x, y) {
+    const count = 3 + Math.floor(Math.random() * 4);
+    const baseHue = Math.random() * 360;
+    const startAngle = Math.random() * TWO_PI;
+    for (let i = 0; i < count; i++) {
+      const angle = startAngle + (i / count) * TWO_PI + (Math.random() - 0.5) * 0.8;
+      branches.push(makeBranch({
+        x, y, angle,
+        width: 3.2 + Math.random() * 1.8,
+        hue: baseHue + (Math.random() - 0.5) * 40,
+        life: 140 + Math.random() * 120,
+        depth: 0,
+      }));
+    }
+  }
+
+  function makeBranch(o) {
+    return {
+      x: o.x,
+      y: o.y,
+      angle: o.angle,
+      width: o.width,
+      hue: o.hue,
+      life: o.life,
+      depth: o.depth,
+      speed: 1.6 + Math.random() * 1.0,
+      wander: 0.12 + Math.random() * 0.14,
+      curl: (Math.random() - 0.5) * 0.05,
+    };
+  }
+
+  function drawLeaf(x, y, angle, size, hue) {
+    const side = Math.random() < 0.5 ? 1 : -1;
+    const la = angle + side * (0.7 + Math.random() * 0.5);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(la);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(size * 0.6, -size * 0.5, size * 1.6, 0);
+    ctx.quadraticCurveTo(size * 0.6, size * 0.5, 0, 0);
+    ctx.fillStyle = `hsla(${(hue + 90) % 360}, 70%, 55%, 0.85)`;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawBlossom(x, y, hue) {
+    const petals = 5 + Math.floor(Math.random() * 3);
+    const r = 3 + Math.random() * 4;
+    for (let i = 0; i < petals; i++) {
+      const a = (i / petals) * TWO_PI;
+      ctx.beginPath();
+      ctx.ellipse(
+        x + Math.cos(a) * r, y + Math.sin(a) * r,
+        r * 0.9, r * 0.55, a, 0, TWO_PI
+      );
+      ctx.fillStyle = `hsla(${(hue + 30) % 360}, 90%, 68%, 0.9)`;
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(x, y, r * 0.7, 0, TWO_PI);
+    ctx.fillStyle = `hsla(${(hue + 200) % 360}, 90%, 75%, 0.95)`;
+    ctx.fill();
+  }
+
+  function step(b) {
+    b.angle += (Math.random() - 0.5) * b.wander + b.curl;
+    const nx = b.x + Math.cos(b.angle) * b.speed;
+    const ny = b.y + Math.sin(b.angle) * b.speed;
+
+    ctx.beginPath();
+    ctx.moveTo(b.x, b.y);
+    ctx.lineTo(nx, ny);
+    ctx.lineWidth = b.width;
+    ctx.strokeStyle = `hsl(${b.hue % 360}, 78%, 56%)`;
+    ctx.stroke();
+
+    b.x = nx;
+    b.y = ny;
+    b.hue += 0.6;
+    b.width *= 0.9925;
+    b.life -= 1;
+
+    if (Math.random() < 0.04) {
+      drawLeaf(b.x, b.y, b.angle, 4 + Math.random() * 4, b.hue);
+    }
+
+    if (
+      branches.length < MAX_BRANCHES &&
+      b.depth < 4 &&
+      b.life > 20 &&
+      Math.random() < 0.018
+    ) {
+      branches.push(makeBranch({
+        x: b.x,
+        y: b.y,
+        angle: b.angle + (Math.random() < 0.5 ? -1 : 1) * (0.5 + Math.random() * 0.6),
+        width: b.width * 0.8,
+        hue: b.hue + (Math.random() - 0.5) * 30,
+        life: b.life * (0.55 + Math.random() * 0.25),
+        depth: b.depth + 1,
+      }));
+    }
+
+    if (b.x < -20 || b.x > W + 20 || b.y < -20 || b.y > H + 20) {
+      b.life = 0;
+    }
+  }
+
+  function tick() {
+    const STEPS = 2;
+    for (let s = 0; s < STEPS; s++) {
+      for (let i = branches.length - 1; i >= 0; i--) {
+        const b = branches[i];
+        step(b);
+        if (b.life <= 0 || b.width < 0.5) {
+          if (b.width >= 0.5 && Math.random() < 0.7) {
+            drawBlossom(b.x, b.y, b.hue);
+          }
+          branches.splice(i, 1);
+        }
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  let hintHidden = false;
+  function plant(x, y) {
+    spawnSprout(x, y);
+    if (!hintHidden) {
+      hint.classList.add("hidden");
+      hintHidden = true;
+    }
+  }
+
+  canvas.addEventListener("pointerdown", (e) => {
+    plant(e.clientX, e.clientY);
+  });
+
+  let lastTap = 0;
+  canvas.addEventListener("pointerup", (e) => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      ctx.clearRect(0, 0, W, H);
+      branches.length = 0;
+    }
+    lastTap = now;
+  });
+
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+})();
+</script>
+</body>
+</html>
